@@ -64,7 +64,6 @@ public class Ogc3dTileMapService extends AbstractTileMapService<Ogc3dTileMapServ
     private static final Matrix4d ROTATE_X_AXIS = new Matrix4d().rotateX(Math.PI / 2);
 
     private static final ImageTexturePair WHITE_TEXTURE;
-    private static final ExecutorService TILE_PARSER = Executors.newCachedThreadPool();
 
     @Setter private transient double radius = 40;
     @Setter private transient boolean yDistortion = false;
@@ -79,6 +78,7 @@ public class Ogc3dTileMapService extends AbstractTileMapService<Ogc3dTileMapServ
     private final boolean rotateModelAlongEarthXAxis;
     private final String geoidType;
 
+    private transient final ExecutorService tileParser;
     private transient final ExecutorService tileFetcher;
     private transient final CacheStorage<Key, Pair<Matrix4d, TileData>> tileDataStorage;
     private transient final Map<String, Integer> copyrightOccurrences = new HashMap<>();
@@ -94,6 +94,7 @@ public class Ogc3dTileMapService extends AbstractTileMapService<Ogc3dTileMapServ
         this.rotateModelAlongEarthXAxis = rotateModelAlongEarthXAxis;
         this.geoidType = geoidType;
 
+        this.tileParser = Executors.newCachedThreadPool();
         this.tileFetcher = Executors.newFixedThreadPool(this.getNThreads());
         this.tileDataStorage = new CacheStorage<>(properties.getCacheConfig());
     }
@@ -348,7 +349,7 @@ public class Ogc3dTileMapService extends AbstractTileMapService<Ogc3dTileMapServ
                 .thenApplyAsync(stream -> {
                     try { return Pair.of(transform, TileResourceManager.parse(stream, this.coordConverter)); }
                     catch (IOException e) { throw new RuntimeException(e); }
-                }, TILE_PARSER));
+                }, this.tileParser));
     }
 
     @Override
@@ -365,7 +366,8 @@ public class Ogc3dTileMapService extends AbstractTileMapService<Ogc3dTileMapServ
     public void close() throws IOException {
         super.close();
         this.tileDataStorage.close();
-        TILE_PARSER.shutdown();
+        this.tileParser.shutdown();
+        this.tileFetcher.shutdown();
     }
 
     static {
