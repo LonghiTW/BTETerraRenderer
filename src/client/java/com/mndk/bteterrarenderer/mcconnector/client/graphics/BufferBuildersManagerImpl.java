@@ -6,22 +6,30 @@ import com.mndk.bteterrarenderer.mcconnector.client.graphics.vertex.PosTex;
 import com.mndk.bteterrarenderer.mcconnector.client.graphics.vertex.PosTexNorm;
 import com.mndk.bteterrarenderer.mcconnector.util.math.McCoord;
 import com.mndk.bteterrarenderer.mcconnector.util.math.McCoordTransformer;
-import com.mojang.blaze3d.*;
+import com.mojang.blaze3d.PrimitiveTopology;
+import com.mojang.blaze3d.pipeline.BlendFunction;
+import com.mojang.blaze3d.pipeline.ColorTargetState;
+import com.mojang.blaze3d.pipeline.RenderPipeline;
+import com.mojang.blaze3d.vertex.DefaultVertexFormat;
+import com.mojang.blaze3d.vertex.PoseStack;
+import com.mojang.blaze3d.vertex.VertexConsumer;
+import net.minecraft.client.renderer.BindGroupLayouts;
+import net.minecraft.client.renderer.RenderPipelines;
+import net.minecraft.client.renderer.texture.OverlayTexture;
+import net.minecraft.util.Util;
+import org.joml.Vector2f;
+
+import java.util.function.BiFunction;
 import com.mojang.blaze3d.pipeline.*;
 import com.mojang.blaze3d.vertex.*;
-import net.minecraft.client.renderer.*;
+
 //? if >=1.21.11 {
 import net.minecraft.client.renderer.rendertype.RenderSetup;
 import net.minecraft.client.renderer.rendertype.RenderType;
 //? } else {
 /*import net.minecraft.Util;
 *///? }
-import net.minecraft.client.renderer.texture.OverlayTexture;
 import net.minecraft.resources./*? if >=1.21.11 {*/Identifier/*? } else {*//*ResourceLocation*//*? }*/;
-import net.minecraft.util.*;
-import org.joml.Vector2f;
-
-import java.util.function.BiFunction;
 
 public class BufferBuildersManagerImpl implements BufferBuildersManager {
 
@@ -31,16 +39,20 @@ public class BufferBuildersManagerImpl implements BufferBuildersManager {
     /**
      * Minecraft 1.21.11 switched RenderType creation to the RenderSetup API.
      */
-    private static RenderSetup generateSetup(RenderPipeline pipeline, Identifier texture) {
-        return RenderSetup.builder(pipeline)
+    private static RenderSetup generateSetup(RenderPipeline pipeline, Identifier texture, boolean sort) {
+        RenderSetup.RenderSetupBuilder builder = RenderSetup.builder(pipeline)
                 // Sampler name must match what the pipeline declares via withSampler(...)
                 .withTexture("Sampler0", texture)
                 .useLightmap()
                 .useOverlay()
-                .sortOnUpload()
                 // .bufferSize(1536) // Default is 1536, removed in 26.2-snapshot-5
-                .setOutline(RenderSetup.OutlineProperty.AFFECTS_OUTLINE)
-                .createRenderSetup();
+                .setOutline(RenderSetup.OutlineProperty.AFFECTS_OUTLINE);
+        // StagedVertexBuffer only supports sorting for QUADS topology; TRIANGLES throws
+        // "Cannot sort draw with TRIANGLES" if sortOnUpload() is enabled.
+        if (sort) {
+            builder.sortOnUpload();
+        }
+        return builder.createRenderSetup();
     }
 
     private static final BiFunction</*? if >=26.2 {*/PrimitiveTopology/*? } else {*//*VertexFormat.Mode*//*? }*/, Boolean, RenderPipeline> PIPELINE = Util.memoize(
@@ -68,14 +80,14 @@ public class BufferBuildersManagerImpl implements BufferBuildersManager {
     private static final BiFunction</*? if >=1.21.11 {*/Identifier/*? } else {*//*ResourceLocation*//*? }*/, Boolean, RenderType> QUADS = Util.memoize(
             (texture, cull) -> {
                 RenderPipeline pipeline = PIPELINE.apply(/*? if >=26.2 {*/PrimitiveTopology.QUADS/*? } else {*//*VertexFormat.Mode.QUADS*//*? }*/, cull);
-                return RenderType.create("bteterrarenderer-quads", generateSetup(pipeline, texture));
+                return RenderType.create("bteterrarenderer-quads", generateSetup(pipeline, texture, true));
             }
     );
 
     private static final BiFunction</*? if >=1.21.11 {*/Identifier/*? } else {*//*ResourceLocation*//*? }*/, Boolean, RenderType> TRIS = Util.memoize(
             (texture, cull) -> {
                 RenderPipeline pipeline = PIPELINE.apply(/*? if >=26.2 {*/PrimitiveTopology.TRIANGLES/*? } else {*//*VertexFormat.Mode.TRIANGLES*//*? }*/, cull);
-                return RenderType.create("bteterrarenderer-tris", generateSetup(pipeline, texture));
+                return RenderType.create("bteterrarenderer-tris", generateSetup(pipeline, texture, false));
             }
     );
 //? } else if >=1.21.5 {
